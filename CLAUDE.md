@@ -11,7 +11,8 @@ For user-facing documentation see [README.md](./README.md), [CLI 核心功能](.
 ```bash
 bun run dev            # Run in dev mode
 bun run build          # Build (minified) → dist/index.js
-bun run build:sf       # Build standalone binary
+bun run build:sf       # Build current-platform standalone binary → release/
+bun run build:sf -- --targets=all  # Build mainstream standalone binaries → release/
 bun test               # Run all tests
 bun test tests/<file>  # Run a single test file
 bun run update-registry  # Regenerate module registry from OpenAPI spec
@@ -57,6 +58,9 @@ src/
 ## Build & Distribution
 
 - `bin/zentao.js` — npm global install entry shim → `dist/index.js`.
+- `bun run build:sf` — standalone binary for the current platform, output to `release/`.
+- `bun run build:sf -- --targets=all` — standalone binaries for mainstream macOS/Linux/Windows targets.
+- `bun run build:sf -- --targets=linux-x64,darwin-arm64 --outdir ./artifacts` — custom target list and output directory.
 - Published to npm as `zentao-cli`; `files` includes `bin/`, `dist/`, `skills/`.
 
 ## Code Conventions
