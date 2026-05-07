@@ -2,13 +2,12 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { MODULES } from '../modules/registry.js';
-import type { ModuleDefinition, ModuleAction } from '../types/index.js';
-import { resolveModuleCommand, extractResult, extractPager } from '../modules/resolver.js';
-import { convertHtmlFields, convertHtmlFieldsInArray } from '../utils/html.js';
-import { filterData, sortData, searchData, pickFields, pickFieldsSingle } from '../utils/data.js';
+import type { ModuleDefinition, ModuleAction, ModuleActionOptions } from '../types/index.js';
+import { executeModuleCommand } from '../modules/executor.js';
 import { ZentaoError } from '../errors.js';
 import type { AuthProvider } from './server.js';
-import { getCurrentProfile, setCurrentProfile, profileKey } from '../config/store.js';
+import { getCurrentProfile, getProfileConfig, setCurrentProfile, profileKey } from '../config/store.js';
+import { DEFAULT_CONFIG } from '../config/defaults.js';
 
 function buildToolDescription(mod: ModuleDefinition): string {
     const actions = mod.actions.map(a => a.name);
@@ -134,9 +133,11 @@ async function handleModuleTool(
     auth: AuthProvider,
 ): Promise<CallToolResult> {
     const client = await auth.getClient();
+    const profile = getCurrentProfile();
+    const config = profile ? getProfileConfig(profile) : DEFAULT_CONFIG;
     const actionName = input.action;
 
-    const opts: Record<string, unknown> = {
+    const opts: ModuleActionOptions = {
         id: input.id != null ? String(input.id) : undefined,
         product: input.product != null ? String(input.product) : undefined,
         project: input.project != null ? String(input.project) : undefined,
@@ -153,54 +154,20 @@ async function handleModuleTool(
         yes: true,
     };
 
-    const command = resolveModuleCommand(mod, actionName, opts as any, []);
+    const execution = await executeModuleCommand(client, mod, actionName, [], opts, config);
 
-    const result = await client.request(command.action.method, command.path, {
-        query: command.query,
-        body: command.data,
-    });
-
-    if (command.action.type === 'list') {
-        let data = extractResult(command.action, result) as Record<string, unknown>[];
-        const pager = extractPager(command.action, result);
-
-        data = convertHtmlFieldsInArray(data);
-
-        if (input.filter?.length) {
-            data = filterData(data, input.filter);
-        }
-        if (input.search?.length) {
-            data = searchData(data, input.search, input.searchFields?.split(','));
-        }
-        if (input.sort) {
-            data = sortData(data, input.sort);
-        }
-
-        const fields = input.pick?.split(',');
-        if (fields) {
-            data = pickFields(data, fields);
-        }
-
-        const response: Record<string, unknown> = { data };
-        if (pager) response.pager = pager;
+    if (execution.command.action.type === 'list') {
+        const response: Record<string, unknown> = { data: execution.data };
+        if (execution.pager) response.pager = execution.pager;
         return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
     }
 
-    if (command.action.type === 'get') {
-        let data = (extractResult(command.action, result) ?? result) as Record<string, unknown>;
-        data = convertHtmlFields(data);
-
-        const fields = input.pick?.split(',');
-        if (fields) {
-            data = pickFieldsSingle(data, fields);
-        }
-
-        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    if (execution.command.action.type === 'get') {
+        return { content: [{ type: 'text', text: JSON.stringify(execution.data, null, 2) }] };
     }
 
     // create / update / delete / action
-    const data = extractResult(command.action, result);
-    return { content: [{ type: 'text', text: JSON.stringify(data ?? result, null, 2) }] };
+    return { content: [{ type: 'text', text: JSON.stringify(execution.data ?? execution.rawResponse, null, 2) }] };
 }
 
 function toolAnnotations(actions: ModuleAction[]) {

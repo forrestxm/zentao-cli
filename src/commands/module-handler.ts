@@ -1,9 +1,8 @@
 import type { ZentaoClient } from '../api/client.js';
 import type { ModuleDefinition, ModuleAction, ModuleActionType, Profile, ModuleActionName, ResolvedModuleCommand, UserConfig } from '../types/index.js';
-import { findAction, getAvailableActions, extractResult, extractPager, resolveModuleCommand } from '../modules/resolver.js';
+import { findAction, getAvailableActions, resolveModuleCommand } from '../modules/resolver.js';
+import { executeResolvedModuleCommand } from '../modules/executor.js';
 import { getProfileConfig } from '../config/store.js';
-import { convertHtmlFields, convertHtmlFieldsInArray } from '../utils/html.js';
-import { filterData, sortData, searchData, pickFields, pickFieldsSingle } from '../utils/data.js';
 import { formatOutput } from '../utils/format.js';
 import type { ModuleActionOptions } from '../types/index.js';
 import { createInterface } from 'node:readline';
@@ -51,94 +50,57 @@ function pickBatchIds(args: string[], options: ModuleActionOptions): { ids: stri
     return undefined;
 }
 
-/** 处理列表操作 */
-async function handleListCommand(client: ZentaoClient, module: ModuleDefinition, command: ResolvedModuleCommand, options: ModuleActionOptions, config: UserConfig) {
-    const {action, path, query} = command;
-    const silent = options.silent ?? config.silent ?? false;
-    const result = await client.get(path, query);
-    const format = options.format ?? config.defaultOutputFormat ?? 'markdown';
-    const data = extractResult(action, result) as Record<string, unknown>[];
-    const pager = extractPager(action, result);
-    let processed: Record<string, unknown>[] = data;
-
-    if (config.htmlToMarkdown !== false) {
-        processed = convertHtmlFieldsInArray(processed);
-    }
-    if (options.filter?.length) {
-        processed = filterData(processed, options.filter);
-    }
-    if (options.search?.length) {
-        const searchFields = options.searchFields?.split(',');
-        processed = searchData(processed, options.search, searchFields);
-    }
-    if (options.sort) {
-        processed = sortData(processed, options.sort);
-    }
-
-    if (options.limit && Number(options.limit) < processed.length) {
-        processed = processed.slice(0, Number(options.limit));
-    }
-
-    const fields = options.pick?.split(',');
-    if (fields) {
-        processed = pickFields(processed, fields);
-    }
-
-    if (silent) {
-        return;
-    }
-    const output = formatOutput(processed, { format, isList: true, fields, pager, jsonPretty: config.jsonPretty });
-    if (output) console.log(output);
-}
-
-/** 处理获取单个对象操作 */
-async function handleGetCommand(client: ZentaoClient, module: ModuleDefinition, command: ResolvedModuleCommand, options: ModuleActionOptions, config: UserConfig) {
-    const {action, path, query} = command;
+async function renderModuleExecution(
+    client: ZentaoClient,
+    command: ResolvedModuleCommand,
+    options: ModuleActionOptions,
+    config: UserConfig,
+): Promise<void> {
     const format = options.format ?? config.defaultOutputFormat ?? 'markdown';
     const silent = options.silent ?? config.silent ?? false;
 
-    const response = await client.get(path, query);
+    const execution = await executeResolvedModuleCommand(client, command, options, config);
     if (silent) {
         return;
     }
 
-    let data = (extractResult(action, response) ?? response) as Record<string, unknown>;
-    if (config.htmlToMarkdown !== false) {
-        data = convertHtmlFields(data);
-    }
-    const fields = options.pick?.split(',');
-    if (fields) {
-        data = pickFieldsSingle(data, fields);
-    }
-
-    const output = renderObject(data, format, { fields });
-    if (output) console.log(output);
-}
-
-/** 处理对象通用操作 */
-async function handleActionCommand(client: ZentaoClient, module: ModuleDefinition, command: ResolvedModuleCommand, options: ModuleActionOptions, config: UserConfig) {
-    const {action, path, query, data: body} = command;
-    const format = options.format ?? config.defaultOutputFormat ?? 'markdown';
-    const silent = options.silent ?? config.silent ?? false;
-
-    if (action.type === 'delete' && !options.yes) {
-        if (!await confirmDelete(format, command.id !== undefined ? 1 : 0)) {
-            return;
-        }
-    }
-
-    if (!command.id && (action.type === 'delete' || action.type === 'update' || action.type === 'action')) {
-        throw new ZentaoError('E2009', { option: 'id', reason: '必须提供要操作的对象 ID' });
-    }
-
-    const result = await client.request(action.method, path, { query, body });
-    if (silent) {
+    if (format === 'raw') {
+        const output = formatOutput(execution.data, {
+            format,
+            isList: execution.isList,
+            fields: execution.fields,
+            pager: execution.pager,
+            jsonPretty: config.jsonPretty,
+            rawResponse: execution.rawResponse,
+        });
+        if (output) console.log(output);
         return;
     }
 
-    const data = extractResult(action, result);
-    const output = formatOutput(data, { format, isList: false, fields: options.pick?.split(','), jsonPretty: config.jsonPretty });
+    if (command.action.type === 'list') {
+        const output = formatOutput(execution.data, {
+            format,
+            isList: true,
+            fields: execution.fields,
+            pager: execution.pager,
+            jsonPretty: config.jsonPretty,
+        });
+        if (output) console.log(output);
+        return;
+    }
 
+    if (command.action.type === 'get') {
+        const output = renderObject(execution.data as Record<string, unknown>, format, { fields: execution.fields });
+        if (output) console.log(output);
+        return;
+    }
+
+    const output = formatOutput(execution.data, {
+        format,
+        isList: false,
+        fields: execution.fields,
+        jsonPretty: config.jsonPretty,
+    });
     if (output) console.log(output);
 }
 
@@ -192,23 +154,18 @@ export async function handleModuleCommand(
     }
 
     const command = resolveModuleCommand(module, actionName, options, args);
-    switch (command.action.type) {
-        case 'list': {
-            await handleListCommand(client, module, command, options, config);
-            break;
-        }
-        case 'get': {
-            await handleGetCommand(client, module, command, options, config);
-            break;
-        }
-        case 'create':
-        case 'update':
-        case 'delete':
-        case 'action': {
-            await handleActionCommand(client, module, command, options, config);
-            break;
+
+    if (command.action.type === 'delete' && !options.yes) {
+        if (!await confirmDelete(format, command.id !== undefined ? 1 : 0)) {
+            return;
         }
     }
+
+    if (!command.id && (command.action.type === 'delete' || command.action.type === 'update' || command.action.type === 'action')) {
+        throw new ZentaoError('E2009', { option: 'id', reason: '必须提供要操作的对象 ID' });
+    }
+
+    await renderModuleExecution(client, command, options, config);
 }
 
 /**

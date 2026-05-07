@@ -8,6 +8,20 @@ import { getModule } from '../src/modules';
 import type { ModuleActionName, ModuleActionOptions } from '../src/types';
 import { mockProfile } from './helpers';
 
+async function captureConsoleLog(fn: () => Promise<void>): Promise<string[]> {
+    const output: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => {
+        output.push(args.map(String).join(' '));
+    };
+    try {
+        await fn();
+    } finally {
+        console.log = originalLog;
+    }
+    return output;
+}
+
 describe('handleModuleCommand batch ids', () => {
     async function runDelete(args: string[], options: ModuleActionOptions = {}) {
         const requests: Array<{ method: string; path: string }> = [];
@@ -94,5 +108,84 @@ describe('delete confirmation prompt', () => {
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
+    });
+});
+
+describe('handleModuleCommand raw output', () => {
+    test('prints raw API response for list commands', async () => {
+        const rawResponse = {
+            status: 'success',
+            products: [{ id: 1, name: '产品1' }],
+            pager: { recTotal: 1, recPerPage: 20, pageID: 1 },
+        };
+        const client = {
+            request: async () => rawResponse,
+        } as unknown as ZentaoClient;
+
+        const output = await captureConsoleLog(async () => {
+            await handleModuleCommand(
+                client,
+                getModule('product')!,
+                'list' as ModuleActionName,
+                [],
+                mockProfile,
+                { format: 'raw' },
+            );
+        });
+
+        expect(output).toEqual([JSON.stringify(rawResponse, null, 4)]);
+    });
+
+    test('prints raw API response for get commands', async () => {
+        const rawResponse = {
+            status: 'success',
+            user: { id: 1, realname: 'Admin' },
+            serverTime: '2026-05-07T10:00:00Z',
+        };
+        const client = {
+            request: async () => rawResponse,
+        } as unknown as ZentaoClient;
+
+        const output = await captureConsoleLog(async () => {
+            await handleModuleCommand(
+                client,
+                getModule('user')!,
+                'get' as ModuleActionName,
+                ['1'],
+                mockProfile,
+                { format: 'raw' },
+            );
+        });
+
+        expect(output).toEqual([JSON.stringify(rawResponse, null, 4)]);
+    });
+
+    test('prints raw API response for write commands', async () => {
+        const rawResponse = {
+            status: 'success',
+            id: 7,
+            message: 'created',
+        };
+        const client = {
+            request: async () => rawResponse,
+        } as unknown as ZentaoClient;
+
+        const output = await captureConsoleLog(async () => {
+            await handleModuleCommand(
+                client,
+                getModule('user')!,
+                'create' as ModuleActionName,
+                [],
+                mockProfile,
+                {
+                    format: 'raw',
+                    account: 'dev1',
+                    realname: 'Dev One',
+                    password: 'secret',
+                } as any,
+            );
+        });
+
+        expect(output).toEqual([JSON.stringify(rawResponse, null, 4)]);
     });
 });
