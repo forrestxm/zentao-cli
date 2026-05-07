@@ -24,6 +24,33 @@ async function confirmDelete(format: string, count: number): Promise<boolean> {
     });
 }
 
+function splitNumericIds(value: unknown): string[] | undefined {
+    const rawIds = Array.isArray(value) ? value : [value];
+    const ids = rawIds
+        .flatMap((id) => String(id ?? '').split(','))
+        .map((id) => id.trim())
+        .filter(Boolean);
+
+    if (ids.length <= 1 || !ids.every((id) => /^\d+$/.test(id))) {
+        return undefined;
+    }
+    return ids;
+}
+
+function pickBatchIds(args: string[], options: ModuleActionOptions): { ids: string[]; args: string[] } | undefined {
+    const optionIds = splitNumericIds(options.id);
+    if (optionIds) {
+        return { ids: optionIds, args };
+    }
+
+    const positionalIds = splitNumericIds(args[0]);
+    if (positionalIds) {
+        return { ids: positionalIds, args: args.slice(1) };
+    }
+
+    return undefined;
+}
+
 /** 处理列表操作 */
 async function handleListCommand(client: ZentaoClient, module: ModuleDefinition, command: ResolvedModuleCommand, options: ModuleActionOptions, config: UserConfig) {
     const {action, path, query} = command;
@@ -95,7 +122,7 @@ async function handleActionCommand(client: ZentaoClient, module: ModuleDefinitio
     const silent = options.silent ?? config.silent ?? false;
 
     if (action.type === 'delete' && !options.yes) {
-        if (!await confirmDelete(format, options.id?.length ?? 0)) {
+        if (!await confirmDelete(format, command.id !== undefined ? 1 : 0)) {
             return;
         }
     }
@@ -131,27 +158,37 @@ export async function handleModuleCommand(
     const batchFailFast = options.batchFailFast ?? config.batchFailFast ?? false;
     const format = options.format ?? config.defaultOutputFormat ?? 'markdown';
 
-    /** 批量操作时，如果 id 是数组，则遍历每个 ID 执行操作，如果出错则停止 */
-    if (Array.isArray(options.id)) {
-        if (options.id.length > 1) {
-            for (const id of options.id) {
-                let caughtError: Error | undefined;
-                try {
-                    await handleModuleCommand(client, module, actionName, args, profile, { ...options, id });
-                } catch (error) {
-                    caughtError = error as Error;
-                }
-                if (caughtError) {
-                    if (batchFailFast) {
-                        throw caughtError;
-                    }
-                    console.error(renderError(caughtError, format));
-                }
+    const batch = pickBatchIds(args, options);
+    if (batch) {
+        if (actionName === 'delete' && !options.yes) {
+            if (!await confirmDelete(format, batch.ids.length)) {
+                return;
             }
-
-            return;
         }
-        options.id = options.id[0];
+
+        for (const id of batch.ids) {
+            let caughtError: Error | undefined;
+            try {
+                await handleModuleCommand(
+                    client,
+                    module,
+                    actionName,
+                    batch.args,
+                    profile,
+                    { ...options, id, yes: options.yes || actionName === 'delete' },
+                );
+            } catch (error) {
+                caughtError = error as Error;
+            }
+            if (caughtError) {
+                if (batchFailFast) {
+                    throw caughtError;
+                }
+                console.error(renderError(caughtError, format));
+            }
+        }
+
+        return;
     }
 
     const command = resolveModuleCommand(module, actionName, options, args);
