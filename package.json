@@ -28,6 +28,7 @@
     "dev": "bun run src/index.ts",
     "build": "bun run scripts/build.ts --minify",
     "build:sf": "bun run scripts/build.ts --compile --minify",
+    "build:sf:all": "bun run scripts/build.ts --compile --minify --targets=all",
     "update-registry": "bun run scripts/update-registry.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
