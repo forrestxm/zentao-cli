@@ -139,3 +139,17 @@ git tag v<新版本号>
 - 有版本号变动的技能列表（如有）
 - 已创建的 tag 名称
 - 提示用户执行 `git push && git push --tags` 将变更推送到远端
+
+### 可选：发布到 npm
+
+询问用户是否需要发布到 npm。如果确认，依次执行：
+
+```bash
+# 1. 登录 npm（如果已登录可跳过）
+npm login
+
+# 2. 发布
+bun publish
+```
+
+发布成功后告知用户 npm 包链接：`https://www.npmjs.com/package/zentao-cli`
