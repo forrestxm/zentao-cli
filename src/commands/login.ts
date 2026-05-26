@@ -1,10 +1,11 @@
 import { Command } from 'commander';
-import { login, getEnvCredentials } from '../auth/login.js';
+import { login, getEnvCredentials, verifyToken } from '../auth/login.js';
 import { promptLogin } from '../auth/prompt.js';
 import { saveProfile, profileKey, getProfile, buildProfile } from '../config/store.js';
 import { ZentaoError, formatError } from '../errors.js';
 import type { Profile } from '../types/index.js';
 import type { GlobalOptions } from '../types/index.js';
+import { ZentaoClient } from '../api/client.js';
 
 /** 注册 `zentao login`：支持参数、环境变量与交互式提示 */
 export function registerLoginCommand(program: Command): void {
@@ -53,7 +54,13 @@ export function registerLoginCommand(program: Command): void {
                 const oldProfile = getProfile(account, server);
                 let profile: Profile;
                 if (token) {
-                    profile = buildProfile(server, account, token, undefined, undefined, oldProfile);
+                    // 检查 token 是否有效
+                    const client = new ZentaoClient(server, token, {
+                        insecure: globalOpts.insecure,
+                        timeout: globalOpts.timeout,
+                    });
+                    const { serverConfig, user } = await verifyToken(client, account);
+                    profile = buildProfile(server, account, token, serverConfig, user, oldProfile);
                 } else {
                     const result = await login(server, account, password, {
                         insecure: globalOpts.insecure,

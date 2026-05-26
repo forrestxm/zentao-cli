@@ -63,10 +63,7 @@ export async function login(
         let user: Record<string, unknown> | undefined;
         let serverConfig: ServerConfig | undefined;
         try {
-            serverConfig = await client.getServerConfig();
-            const usersResp = await client.get<ApiResponse>('/users', { browseType: 'inside', recPerPage: 100 });
-            const users = usersResp.users as Array<Record<string, unknown>> | undefined;
-            user = users?.find((u) => u.account === account);
+            ({ serverConfig, user } = await verifyToken(client, account));
         } catch(error) {
             // Token valid but couldn't fetch user details - not fatal
         }
@@ -88,6 +85,26 @@ export async function login(
             delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
         }
     }
+}
+
+/**
+ * 拉取服务器配置与用户列表，用于验证 Token 是否可用。
+ * - /server/config 失败抛 E1002（服务不可达）
+ * - /users 401 由 ZentaoClient 映射为 E1004（Token 失效）
+ * - /users 返回空列表也按 E1004 处理
+ */
+export async function verifyToken(
+    client: ZentaoClient,
+    account: string,
+): Promise<{ serverConfig: ServerConfig; user?: Record<string, unknown> }> {
+    const serverConfig = await client.getServerConfig();
+    const usersResp = await client.get<ApiResponse>('/users', { browseType: 'inside', recPerPage: 100 });
+    const users = usersResp.users as Array<Record<string, unknown>> | undefined;
+    if (!users?.length) {
+        throw new ZentaoError('E1004');
+    }
+    const user = users.find((u) => u.account === account);
+    return { serverConfig, user };
 }
 
 /** 读取 `ZENTAO_URL` / `ZENTAO_ACCOUNT` / `ZENTAO_PASSWORD` / `ZENTAO_TOKEN` */
