@@ -211,7 +211,7 @@ export function resolveModuleCommand(
                         value = [value];
                     }
                 }
-                if (Array.isArray(value)) {
+                if (Array.isArray(value) && !shouldPreserveArrayItems(module.name, action.name, key, value)) {
                     value = value.map(item => {
                         if (typeof item !== 'string' && prop.items?.type === 'string') {
                             item = String(item ?? '');
@@ -227,6 +227,14 @@ export function resolveModuleCommand(
     }
 
     return { module: module.name, action, params, path, query, data, id };
+}
+
+function shouldPreserveArrayItems(moduleName: string, actionName: string, key: string, value: unknown[]): boolean {
+    if (moduleName !== 'testcase') return false;
+    if (actionName !== 'create' && actionName !== 'update') return false;
+    if (key !== 'steps') return false;
+
+    return value.some((item) => item !== null && typeof item === 'object' && !Array.isArray(item));
 }
 
 /** 从模块中查找指定类型（和可选名称）的 action */

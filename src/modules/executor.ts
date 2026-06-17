@@ -46,8 +46,15 @@ export async function executeResolvedModuleCommand(
     options: ModuleActionOptions,
     config: UserConfig,
 ): Promise<ModuleExecutionResult> {
+    const hasStructuredSteps = hasStructuredTestcaseSteps(command);
+    if (hasStructuredSteps) {
+        prepareStructuredTestcaseSteps(command);
+    }
+
     if (command.action.type === 'update') {
-        await fillUpdateDataFromCurrent(client, command);
+        if (!hasStructuredSteps) {
+            await fillUpdateDataFromCurrent(client, command);
+        }
     }
 
     const rawResponse = await client.request(command.action.method, command.path, {
@@ -130,7 +137,10 @@ async function fillUpdateDataFromCurrent(
     if (!dataObj || typeof dataObj !== 'object' || Array.isArray(dataObj)) return;
 
     const propertyKeys = Object.keys(schema.properties);
-    const missingKeys = propertyKeys.filter((key) => dataObj[key] === undefined);
+    let missingKeys = propertyKeys.filter((key) => dataObj[key] === undefined);
+    if (hasStructuredTestcaseSteps(command)) {
+        missingKeys = missingKeys.filter((key) => key !== 'expects' && key !== 'stepType');
+    }
 
     if (missingKeys.length === 0) {
         cleanupUndefinedFields(dataObj);
@@ -172,6 +182,57 @@ async function fillUpdateDataFromCurrent(
     }
 
     cleanupUndefinedFields(dataObj);
+}
+
+function hasStructuredTestcaseSteps(command: ResolvedModuleCommand): boolean {
+    if (command.module !== 'testcase') return false;
+    if (command.action.type !== 'create' && command.action.type !== 'update') return false;
+    const dataObj = command.data as Record<string, unknown> | undefined;
+    const steps = dataObj?.steps;
+    if (!Array.isArray(steps)) return false;
+
+    return steps.some((step) => step !== null && typeof step === 'object' && !Array.isArray(step));
+}
+
+function prepareStructuredTestcaseSteps(command: ResolvedModuleCommand): void {
+    const dataObj = command.data as Record<string, unknown> | undefined;
+    if (!dataObj || typeof dataObj !== 'object' || Array.isArray(dataObj)) return;
+    const steps = dataObj.steps;
+    if (!Array.isArray(steps)) return;
+
+    const stepMap: Record<string, string> = {};
+    const expectMap: Record<string, string> = {};
+    const typeMap: Record<string, string> = {};
+
+    steps.forEach((step, index) => {
+        if (step === null || typeof step !== 'object' || Array.isArray(step)) return;
+        const obj = step as Record<string, unknown>;
+        const key = normalizeStepKey(obj.id ?? obj.name ?? index + 1);
+        stepMap[key] = String(obj.desc ?? obj.step ?? '');
+        expectMap[key] = String(obj.expect ?? '');
+        typeMap[key] = normalizeStepType(obj.type);
+    });
+
+    dataObj.steps = stepMap;
+    dataObj.expects = expectMap;
+    dataObj.stepType = typeMap;
+    if (dataObj.product === undefined && dataObj.productID !== undefined) {
+        dataObj.product = dataObj.productID;
+    }
+    cleanupUndefinedFields(dataObj);
+}
+
+function normalizeStepKey(value: unknown): string {
+    const key = String(value);
+    if (/^\d{1,3}(?:\.\d{1,3})*$/.test(key)) {
+        return key.split('.').map((part) => part.padStart(3, '0')).join('.');
+    }
+    return key;
+}
+
+function normalizeStepType(value: unknown): string {
+    const type = String(value ?? 'step');
+    return type === 'group' || type === 'item' || type === 'step' ? type : 'step';
 }
 
 function cleanupUndefinedFields(obj: Record<string, unknown>): void {

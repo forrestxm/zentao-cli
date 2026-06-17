@@ -116,6 +116,51 @@ describe('module resolver', () => {
         expect(command.data).not.toHaveProperty('acl');
     });
 
+    test('preserves object testcase steps from --data for hierarchical steps', () => {
+        const mod = getModule('testcase')!;
+        const steps = [
+            { name: '1', type: 'step', desc: '主步骤', expect: '主步骤预期' },
+            { name: '1.1', type: 'step', desc: '子步骤', expect: '' },
+        ];
+        const command = resolveModuleCommand(
+            mod,
+            'create',
+            {
+                data: JSON.stringify({
+                    productID: 1,
+                    title: '层级步骤验证',
+                    steps,
+                    expects: ['不使用 expects 生成层级步骤'],
+                }),
+            },
+        );
+
+        expect(command.data).toMatchObject({
+            productID: 1,
+            title: '层级步骤验证',
+            expects: ['不使用 expects 生成层级步骤'],
+        });
+        expect((command.data as Record<string, unknown>).steps).toEqual(steps);
+    });
+
+    test('preserves object testcase steps from --data for update', () => {
+        const mod = getModule('testcase')!;
+        const steps = [
+            { name: '1', type: 'step', desc: '主步骤', expect: '主步骤预期' },
+            { name: '1.1', type: 'step', desc: '子步骤', expect: '' },
+        ];
+        const command = resolveModuleCommand(
+            mod,
+            'update',
+            { data: JSON.stringify({ title: '层级步骤验证', steps }) },
+            ['6'],
+        );
+
+        expect(command.id).toBe(6);
+        expect(command.path).toBe('/testcases/6');
+        expect((command.data as Record<string, unknown>).steps).toEqual(steps);
+    });
+
     test('supports positional id for delete action', () => {
         const mod = getModule('product')!;
         const command = resolveModuleCommand(

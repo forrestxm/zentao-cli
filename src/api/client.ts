@@ -91,7 +91,8 @@ export class ZentaoClient {
                 throw new ZentaoError('E2008', { url: response.url, status: response.status.toString(), statusText: response.statusText, serverResponse: responseText });
             }
             if (data.status === 'fail') {
-                throw new ZentaoError('E2008', { url: response.url, status: response.status.toString(), statusText: response.statusText, serverResponse: JSON.stringify(data.message || data) });
+                const serverResponse = JSON.stringify(data);
+                throw new ZentaoError('E2008', { url: response.url, status: response.status.toString(), statusText: response.statusText, serverResponse }, data);
             }
             return data;
         } catch (error) {

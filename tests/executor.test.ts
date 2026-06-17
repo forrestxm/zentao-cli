@@ -226,6 +226,97 @@ describe('module executor', () => {
         });
     });
 
+    test('create converts structured testcase steps to keyed maps', async () => {
+        const requests: Array<{ method: string; path: string; options: unknown }> = [];
+        const client = {
+            async request(method: string, path: string, options: unknown) {
+                requests.push({ method, path, options });
+                return { status: 'success', id: 8 };
+            },
+        } as unknown as ZentaoClient;
+        const steps = [
+            { name: '1', type: 'group', desc: '主步骤', expect: '主步骤预期' },
+            { name: '1.1', type: 'step', desc: '子步骤', expect: '子步骤预期' },
+        ];
+
+        await executeModuleCommand(
+            client,
+            getModule('testcase')!,
+            'create',
+            [],
+            { data: JSON.stringify({ productID: 1, title: 'New Case', steps }) } as any,
+            DEFAULT_CONFIG,
+        );
+
+        expect(requests).toEqual([
+            {
+                method: 'post',
+                path: '/testcases',
+                options: {
+                    query: {},
+                    body: {
+                        productID: 1,
+                        product: 1,
+                        title: 'New Case',
+                        steps: { '001': '主步骤', '001.001': '子步骤' },
+                        expects: { '001': '主步骤预期', '001.001': '子步骤预期' },
+                        stepType: { '001': 'group', '001.001': 'step' },
+                    },
+                },
+            },
+        ]);
+    });
+
+    test('update converts structured testcase steps to keyed maps without GET auto-fill', async () => {
+        const requests: Array<{ method: string; path: string; options: unknown }> = [];
+        const client = {
+            async request(method: string, path: string, options: unknown) {
+                requests.push({ method, path, options });
+                if (method === 'get') {
+                    return {
+                        status: 'success',
+                        testcase: {
+                            id: 6,
+                            title: 'Old Case',
+                            expects: ['old expect'],
+                            stepType: ['step'],
+                        },
+                    };
+                }
+                return { status: 'success', id: 6 };
+            },
+        } as unknown as ZentaoClient;
+        const steps = [
+            { name: '1', type: 'step', desc: '主步骤', expect: '主步骤预期' },
+            { name: '1.1', type: 'step', desc: '子步骤', expect: '' },
+        ];
+
+        await executeModuleCommand(
+            client,
+            getModule('testcase')!,
+            'update',
+            ['6'],
+            { data: JSON.stringify({ title: 'New Case', steps }) } as any,
+            DEFAULT_CONFIG,
+        );
+
+        expect(requests).toEqual([
+            {
+                method: 'put',
+                path: '/testcases/6',
+                options: {
+                    query: {},
+                    body: {
+                        title: 'New Case',
+                        steps: { '001': '主步骤', '001.001': '子步骤' },
+                        expects: { '001': '主步骤预期', '001.001': '' },
+                        stepType: { '001': 'step', '001.001': 'step' },
+                    },
+                },
+            },
+        ]);
+    });
+
     test('update keeps user-supplied values and strips undefined fields', async () => {
         const requests: Array<{ method: string; path: string; options: unknown }> = [];
         const client = {
