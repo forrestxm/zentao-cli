@@ -77,7 +77,7 @@ async function renderModuleExecution(
         return;
     }
 
-    if (command.action.type === 'list') {
+    if (execution.isList) {
         const output = formatOutput(execution.data, {
             format,
             isList: true,

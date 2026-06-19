@@ -386,10 +386,31 @@ function buildRequestBody(op: OpenAPIOperation): RegistryRequestBody | undefined
 
     const result: RegistryRequestBody = {
         type: 'object',
-        schema: jsonContent.schema,
+        schema: normalizeRequestSchema(jsonContent.schema),
     };
     if (rb.required) result.required = true;
     return result;
+}
+
+function normalizeRequestSchema(schema: Record<string, unknown>): Record<string, unknown> {
+    const normalized = structuredClone(schema) as Record<string, unknown>;
+    const properties = normalized.properties as Record<string, unknown> | undefined;
+    if (!properties) return normalized;
+
+    // Upstream OpenAPI currently misspells testcase update's "module" body field
+    // as "moudule". ZenTao expects the real field name to be "module".
+    if (properties.moudule !== undefined && properties.module === undefined) {
+        properties.module = properties.moudule;
+        delete properties.moudule;
+    }
+
+    const example = normalized.example as Record<string, unknown> | undefined;
+    if (example?.moudule !== undefined && example.module === undefined) {
+        example.module = example.moudule;
+        delete example.moudule;
+    }
+
+    return normalized;
 }
 
 // ---------------------------------------------------------------------------
@@ -592,6 +613,11 @@ function main() {
             actionBodies.push(body);
         }
 
+        if (tagName === 'product') {
+            actionDisplayNames.splice(3, 0, '获取产品模块树');
+            actionBodies.splice(3, 0, productModulesActionBody());
+        }
+
         // Compose module description
         const moduleDesc = `${display}管理，支持${actionDisplayNames.join('、')}`;
 
@@ -656,6 +682,35 @@ function formatParam(p: RegistryParam): string {
     }
     s += `                    },\n`;
     return s;
+}
+
+function productModulesActionBody(): string {
+    return [
+        `                name: 'modules',`,
+        `                display: '获取产品模块树',`,
+        `                type: 'action',`,
+        `                method: 'get',`,
+        `                apiVersion: 'v1',`,
+        `                path: '/modules',`,
+        `                resultType: 'list',`,
+        `                resultGetter: 'modules',`,
+        `                params: [`,
+        `                    {`,
+        `                        name: 'id',`,
+        `                        required: true,`,
+        `                        type: 'number',`,
+        `                        description: '产品ID',`,
+        `                    },`,
+        `                    {`,
+        `                        name: 'type',`,
+        `                        required: true,`,
+        `                        type: 'string',`,
+        `                        description: '模块视图类型，固定为story',`,
+        `                        defaultValue: 'story',`,
+        `                    },`,
+        `                ],`,
+        ``,
+    ].join('\n');
 }
 
 function escapeStr(s: string): string {

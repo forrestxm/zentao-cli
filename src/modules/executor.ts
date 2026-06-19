@@ -58,13 +58,15 @@ export async function executeResolvedModuleCommand(
     }
 
     const rawResponse = await client.request(command.action.method, command.path, {
+        apiVersion: command.action.apiVersion,
         query: command.query,
         body: command.data,
     }) as Record<string, unknown>;
     const fields = parseFields(options.pick);
 
-    if (command.action.type === 'list') {
+    if (command.action.resultType === 'list') {
         let data = extractResult(command.action, rawResponse) as Record<string, unknown>[];
+        if (!Array.isArray(data)) data = [];
         const pager = extractPager(command.action, rawResponse);
 
         if (config.htmlToMarkdown !== false) {

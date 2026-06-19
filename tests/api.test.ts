@@ -95,6 +95,28 @@ describe('ZentaoClient HTTP behavior', () => {
         }
     });
 
+    test('uses v1 base URL when requested', async () => {
+        let receivedUrl: string | undefined;
+        const server = createMockServer((req) => {
+            receivedUrl = req.url;
+            return Response.json({ status: 'success', modules: [] });
+        });
+
+        try {
+            const client = makeClient(server);
+            await client.request('get', '/modules', {
+                apiVersion: 'v1',
+                query: { id: 1, type: 'story' },
+            });
+            const url = new URL(receivedUrl!);
+            expect(url.pathname).toBe('/api.php/v1/modules');
+            expect(url.searchParams.get('id')).toBe('1');
+            expect(url.searchParams.get('type')).toBe('story');
+        } finally {
+            server.stop();
+        }
+    });
+
     test('skips undefined query parameters', async () => {
         let receivedUrl: string | undefined;
         const server = createMockServer((req) => {

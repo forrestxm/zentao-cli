@@ -136,6 +136,8 @@ export function resolveModuleCommand(
             if (value === undefined) {
                 if (param.name === 'pageID' && params.page) {
                     value = params.page;
+                } else if (param.name === 'id' && id !== undefined) {
+                    value = id;
                 }
             }
             if (value === undefined) {

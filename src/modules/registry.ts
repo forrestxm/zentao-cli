@@ -356,7 +356,7 @@ export const MODULES: ModuleDefinition[] = [
     {
         name: 'product',
         display: '产品',
-        description: '产品管理，支持获取产品列表、创建产品、获取产品详情、修改产品、删除产品',
+        description: '产品管理，支持获取产品列表、创建产品、获取产品详情、获取产品模块树、修改产品、删除产品',
         actions: [
             {
                 name: 'list',
@@ -487,6 +487,30 @@ export const MODULES: ModuleDefinition[] = [
                 pathParams: {
                     productID: '产品ID',
                 },
+            }, {
+                name: 'modules',
+                display: '获取产品模块树',
+                type: 'action',
+                method: 'get',
+                apiVersion: 'v1',
+                path: '/modules',
+                resultType: 'list',
+                resultGetter: 'modules',
+                params: [
+                    {
+                        name: 'id',
+                        required: true,
+                        type: 'number',
+                        description: '产品ID',
+                    },
+                    {
+                        name: 'type',
+                        required: true,
+                        type: 'string',
+                        description: '模块视图类型，固定为story',
+                        defaultValue: 'story',
+                    },
+                ],
             }, {
                 name: 'update',
                 display: '修改产品',
@@ -2676,7 +2700,7 @@ export const MODULES: ModuleDefinition[] = [
                                 "type": "string",
                                 "description": "用例标题"
                             },
-                            "moudule": {
+                            "module": {
                                 "type": "integer",
                                 "description": "所属模块",
                                 "format": "int32"

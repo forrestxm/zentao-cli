@@ -42,14 +42,20 @@ export class ZentaoClient {
         path: string,
         options?: RequestOptions,
     ): Promise<T> {
-        let url = `${this.baseUrl}${path}`;
+        const baseUrl = options?.apiVersion === 'v1'
+            ? this.baseUrl.replace('/api.php/v2', '/api.php/v1')
+            : this.baseUrl;
+        let url = `${baseUrl}${path}`;
         if (options?.query) {
             const search = new URLSearchParams();
             for (const [key, value] of Object.entries(options.query)) {
                 if (value === undefined) continue;
                 search.set(key, String(value));
             }
-            url += `?${search.toString()}`;
+            const queryString = search.toString();
+            if (queryString) {
+                url += `${url.includes('?') ? '&' : '?'}${queryString}`;
+            }
         }
 
         const controller = new AbortController();

@@ -88,6 +88,43 @@ describe('module executor', () => {
         });
     });
 
+    test('executes product modules action as list result', async () => {
+        const requests: Array<{ method: string; path: string; options: unknown }> = [];
+        const client = {
+            async request(method: string, path: string, options: unknown) {
+                requests.push({ method, path, options });
+                return {
+                    modules: [
+                        { id: 1, name: '父模块', children: [{ id: 2, name: '子模块' }] },
+                    ],
+                };
+            },
+        } as unknown as ZentaoClient;
+
+        const result = await executeModuleCommand(
+            client,
+            getModule('product')!,
+            'modules',
+            ['1'],
+            { pick: 'id,name' },
+            DEFAULT_CONFIG,
+        );
+
+        expect(requests).toEqual([
+            {
+                method: 'get',
+                path: '/modules',
+                options: {
+                    apiVersion: 'v1',
+                    query: { id: 1, type: 'story' },
+                    body: undefined,
+                },
+            },
+        ]);
+        expect(result.isList).toBe(true);
+        expect(result.data).toEqual([{ id: 1, name: '父模块' }]);
+    });
+
     test('skips HTML conversion when disabled', async () => {
         const client = {
             async request() {
@@ -311,6 +348,54 @@ describe('module executor', () => {
                         steps: { '001': '主步骤', '001.001': '子步骤' },
                         expects: { '001': '主步骤预期', '001.001': '' },
                         stepType: { '001': 'step', '001.001': 'step' },
+                    },
+                },
+            },
+        ]);
+    });
+
+    test('update testcase module field and preserves current required title', async () => {
+        const requests: Array<{ method: string; path: string; options: unknown }> = [];
+        const client = {
+            async request(method: string, path: string, options: unknown) {
+                requests.push({ method, path, options });
+                if (method === 'get') {
+                    return {
+                        status: 'success',
+                        testcase: {
+                            id: 6,
+                            title: 'Old Case',
+                            module: 12,
+                        },
+                    };
+                }
+                return { status: 'success', id: 6 };
+            },
+        } as unknown as ZentaoClient;
+
+        await executeModuleCommand(
+            client,
+            getModule('testcase')!,
+            'update',
+            ['6', '--module=34'],
+            {} as any,
+            DEFAULT_CONFIG,
+        );
+
+        expect(requests).toEqual([
+            {
+                method: 'get',
+                path: '/testcases/6',
+                options: {},
+            },
+            {
+                method: 'put',
+                path: '/testcases/6',
+                options: {
+                    query: {},
+                    body: {
+                        title: 'Old Case',
+                        module: 34,
                     },
                 },
             },

@@ -38,6 +38,8 @@ export interface LoginResponse extends ApiResponse {
 
 /** API 请求选项 */
 export interface RequestOptions {
+    /** API 版本，默认使用 REST v2 */
+    apiVersion?: 'v1' | 'v2';
     /** URL 查询参数 */
     query?: Record<string, string | number>;
     /** 请求体（自动序列化为 JSON） */

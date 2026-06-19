@@ -61,6 +61,16 @@ import type { Workspace } from '../src/types/config';
         expect(listAction!.name).toBe('list');
     });
 
+    test('product module supports modules action', () => {
+        const product = getModule('product')!;
+        const action = findAction(product, 'action', 'modules');
+        expect(action).toBeDefined();
+        expect(action!.method).toBe('get');
+        expect(action!.apiVersion).toBe('v1');
+        expect(action!.path).toBe('/modules');
+        expect(action!.resultGetter).toBe('modules');
+    });
+
     test('bug module has no top-level list', () => {
         const bug = getModule('bug')!;
         const listAction = findAction(bug, 'list');
@@ -116,6 +126,23 @@ describe('module resolver', () => {
         expect(command.data).not.toHaveProperty('acl');
     });
 
+    test('resolves product module tree path from positional id', () => {
+        const mod = getModule('product')!;
+        const command = resolveModuleCommand(
+            mod,
+            'modules',
+            {},
+            ['1'],
+        );
+
+        expect(command.id).toBe(1);
+        expect(command.path).toBe('/modules');
+        expect(command.query).toEqual({
+            id: 1,
+            type: 'story',
+        });
+    });
+
     test('preserves object testcase steps from --data for hierarchical steps', () => {
         const mod = getModule('testcase')!;
         const steps = [
@@ -159,6 +186,41 @@ describe('module resolver', () => {
         expect(command.id).toBe(6);
         expect(command.path).toBe('/testcases/6');
         expect((command.data as Record<string, unknown>).steps).toEqual(steps);
+    });
+
+    test('supports testcase create module field', () => {
+        const mod = getModule('testcase')!;
+        const command = resolveModuleCommand(
+            mod,
+            'create',
+            {},
+            ['--productID=1', '--title=模块用例', '--module=12'],
+        );
+
+        expect(command.path).toBe('/testcases');
+        expect(command.data).toMatchObject({
+            productID: 1,
+            title: '模块用例',
+            module: 12,
+        });
+    });
+
+    test('supports testcase update module field', () => {
+        const mod = getModule('testcase')!;
+        const command = resolveModuleCommand(
+            mod,
+            'update',
+            {},
+            ['6', '--title=更新模块', '--module=34'],
+        );
+
+        expect(command.id).toBe(6);
+        expect(command.path).toBe('/testcases/6');
+        expect(command.data).toMatchObject({
+            title: '更新模块',
+            module: 34,
+        });
+        expect(command.data).not.toHaveProperty('moudule');
     });
 
     test('supports positional id for delete action', () => {
